@@ -1,38 +1,65 @@
 # Валидатор данных (PHP)
 
 [![hexlet-check](https://github.com/kicha3007-boop/php-oop-project-60/actions/workflows/hexlet-check.yml/badge.svg)](https://github.com/kicha3007-boop/php-oop-project-60/actions)
+[![CI](https://github.com/kicha3007-boop/php-oop-project-60/actions/workflows/ci.yml/badge.svg)](https://github.com/kicha3007-boop/php-oop-project-60/actions/workflows/ci.yml)
 
-Создание собственной библиотеки для проверки корректности (валидации) данных – отличный способ прокачать навыки проектирования кода, в особенности, объектно-ориентированной архитектуры. Создание правильных иерархий классов, глубокая работа с $this, расширяемая архитектура, применение принципов SOLID, использование fluent-интерфейса – все это предстоит делать в проекте
-
-Учебный проект Хекслета: https://ru.hexlet.io/programs/php-oop
-Как это должно работать: https://asciinema.org/a/a96Smlw7w7KD3b4OxC1WeeDPT
-
-## Стек
-
-- PHP
+Библиотека для проверки данных с fluent-интерфейсом по мотивам [yup](https://github.com/jquense/yup):
+строки, числа, массивы со вложенными схемами и собственные правила.
 
 ## Установка
 
-<!-- Опишите установку: клонирование, зависимости, переменные окружения -->
+Нужны PHP 8.3+ и Composer.
 
 ```bash
 git clone https://github.com/kicha3007-boop/php-oop-project-60.git
 cd php-oop-project-60
+make install   # зависимости
+make test      # тесты (PHPUnit)
+make lint      # PHP_CodeSniffer (PSR-12) и PHPStan
+```
+
+Без локального PHP — в контейнере:
+
+```bash
+docker run --rm -v "$PWD:/app" -w /app composer:2 sh -c "composer install && make lint test"
 ```
 
 ## Использование
 
-<!-- Добавьте примеры запуска и запись asciinema — именно это смотрит работодатель -->
+```php
+use Hexlet\Validator\Validator;
 
----
+$v = new Validator();
 
-<details>
-<summary>Автоматические тесты Хекслета</summary>
+// строки: required — непустая строка, minLength, contains
+$name = $v->string()->required()->minLength(3);
+$name->isValid('hexlet'); // true
+$name->isValid('');       // false
 
-Тесты запускаются на каждый коммит. За запуск отвечает файл `.github/workflows/hexlet-check.yml` — не удаляйте и не переименовывайте ни его, ни репозиторий.
+// числа: required — любое число, включая 0; positive; range — границы включительно
+$age = $v->number()->required()->positive()->range(1, 120);
+$age->isValid(30); // true
+$age->isValid(-1); // false
 
-</details>
+// массивы: required — значение-массив; sizeof — точная длина; shape — схемы для ключей
+$user = $v->array()->shape([
+    'name' => $v->string()->required(),
+    'age' => $v->number()->positive(),
+]);
+$user->isValid(['name' => 'kolya', 'age' => 100]); // true
+$user->isValid(['name' => '', 'age' => null]);     // false
 
-## О Хекслете
+// собственные правила: addValidator(тип, имя, fn), вызов через test(имя, ...аргументы)
+$v->addValidator('string', 'startWith', fn($value, $start) => str_starts_with($value, $start));
+$v->string()->test('startWith', 'H')->isValid('Hexlet'); // true
+```
 
-[Хекслет](https://ru.hexlet.io/) — школа программирования: авторские программы обучения с практикой, поддержкой наставников и реальными проектами, которые остаются в резюме. Этот репозиторий — один из таких проектов.
+Без `required()` пустое значение (`null`, у строки ещё `''`) проходит проверку.
+Повторный вызов правила заменяет прежнее.
+
+## Устройство
+
+- `src/Validator.php` — фабрика схем и реестр пользовательских правил по паре «тип и имя»;
+- `src/CustomValidators.php` — пользовательские правила одного типа;
+- `src/Schemas/BaseSchema.php` — общий базовый класс: правила хранятся по имени, `required`, `test`, `isValid`;
+- `src/Schemas/*Schema.php` — схемы типов, каждая добавляет только свои правила.
